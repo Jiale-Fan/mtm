@@ -59,6 +59,9 @@ class PatchifyTokenizer(Tokenizer):
             # normalize trajectory
             trajectory = (trajectory / 255) - 0.5
 
+        noise = torch.rand_like(trajectory).div_(255)
+        trajectory = trajectory + noise
+
         # extract patches
         # reshape to (B, L, H, W, C)
         B, L, H, W, C = trajectory.shape

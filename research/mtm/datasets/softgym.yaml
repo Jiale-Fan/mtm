@@ -1,5 +1,5 @@
 # @package dataset
 _target_: research.mtm.datasets.softgym.get_datasets
-dataset_path: /home/jiale/softagent/data/curl_0.1/data.pkl
+dataset_path: /home/jiale/softagent/data/curl/
 seq_steps: ???
 discount: 0.99

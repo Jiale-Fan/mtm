@@ -12,9 +12,12 @@ from torch.utils.data import Dataset
 
 from research.mtm.datasets.base import DatasetProtocol, DataStatistics
 from research.mtm.tokenizers.base import TokenizerManager
+import os
+import glob
 
 
 def load_episodes(fn):
+    print(f"Loading episodes from {fn}")
     with fn.open("rb") as f:
         episodes = pickle.load(f)
         return episodes
@@ -31,14 +34,15 @@ def get_datasets(
     # home = Path.home()
     # dataset_path = home / "softagent/data/curl/data.pkl"
     if not isinstance(dataset_path, Path):
+        # join the path
         dataset_path = Path(dataset_path)
     train_dataset = SoftgymDataset(
-        dataset_path=dataset_path,
+        dataset_path=Path.joinpath(dataset_path, 'train_dataset'),
         traj_length=seq_steps,
         discount=discount,
     )
     val_dataset = SoftgymDataset(
-        dataset_path=dataset_path,
+        dataset_path=Path.joinpath(dataset_path, 'val_dataset'),
         traj_length=seq_steps,
         discount=discount,
     )
@@ -52,16 +56,24 @@ class SoftgymDataset(Dataset, DatasetProtocol):
     """
     def __init__(
         self,
-        dataset_path: Path,
+        dataset_path: str,
         traj_length: int = 4,
         discount: float = 0.99,
     ):
         self._traj_length = traj_length
 
-        data_pickle_obj = load_episodes(dataset_path) # should be a dictionary {'states': all_frames_numpy, 'rewards': all_rewards_numpy, 'actions': all_actions_numpy, 'keypoints': all_keypoints_numpy}
-    
+        data_objs = glob.glob(str(dataset_path) + '/*.pkl')
+        merged_data_obj = {}
+        for data_obj in data_objs:
+            data_pickle_obj = load_episodes(Path(data_obj))
+            for key in data_pickle_obj:
+                if key not in merged_data_obj:
+                    merged_data_obj[key] = data_pickle_obj[key]
+                else:
+                    merged_data_obj[key].extend(data_pickle_obj[key])
+
         # compute path lengths
-        self._path_lengths = [len(episode) for episode in data_pickle_obj['rewards']]
+        self._path_lengths = [len(episode) for episode in merged_data_obj['rewards']]
         self.max_path_length = max(self._path_lengths)
         # check that all path lengths are the same -- since later we will stack them into numpy arrays
         assert all(
@@ -70,10 +82,10 @@ class SoftgymDataset(Dataset, DatasetProtocol):
 
         # data buffer structures:
         # prepare actions, states, rewards, returns
-        self.actions = np.array(data_pickle_obj['actions']) # [n_paths x n_timesteps x action_dim]
-        self.states = np.array(data_pickle_obj['states'])
-        self.rewards = np.array(data_pickle_obj['rewards'])
-        self.keypoints = np.array(data_pickle_obj['keypoints'])
+        self.actions = np.array(merged_data_obj['actions']) # [n_paths x n_timesteps x action_dim]
+        self.states = np.array(merged_data_obj['states'])
+        self.rewards = np.array(merged_data_obj['rewards'])
+        self.keypoints = np.array(merged_data_obj['keypoints'])
         # TODO: more modality? such as depth?
 
 

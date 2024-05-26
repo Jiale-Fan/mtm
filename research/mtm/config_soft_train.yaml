@@ -8,6 +8,7 @@ tokenizers:
     states:
       _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
       patch_size: 16
+      normalize: True
     actions:
       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
     returns:
@@ -39,26 +40,27 @@ args:
     # eval_every: 1
     # save_every: 1
 
-    log_every: 100
-    print_every: 1000
+    log_every: 50
+    print_every: 100
     eval_every: 20000
     save_every: 10000
 
     device: cuda
-    mask_ratios: [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0] # ??
+    mask_ratios: [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0] 
     mask_patterns: ["AUTO_MASK"]
-    warmup_steps: 10 # !!!!! 
-    num_train_steps: 100 # !!!!!
+    warmup_steps: 40000 # !!!!! 
+    num_train_steps: 140000 # !!!!!
     learning_rate: 0.0001
     weight_decay:  0.005
-    mode_weights: [0.2, 0.1, 0.7] # ??
-    tsp_ratio: 1
+    mode_weights: [0.2, 0.1, 0.7] 
+    tsp_ratio: 1 # used for training with state-only dataset, not used for now
 
 
 wandb:
   project: MTM_softgym
-  entity: ""
+  entity: "jialef22"
   resume: null
+  name: v0.3
   # resume: allow
 
 job_name: job

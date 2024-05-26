@@ -55,7 +55,7 @@ from research.mtm.utils import (
     get_git_hash,
     set_seed_everywhere,
 )
-from softagent.envs.env import Env
+from envs.env import Env
 from collections import deque
 
 dir_path = os.path.dirname(os.path.realpath(__file__))

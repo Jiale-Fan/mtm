@@ -265,11 +265,16 @@ class MTM(nn.Module):
 
         self.output_head_dict = nn.ModuleDict()
         for key, shape in data_shapes.items():
-            self.output_head_dict[key] = nn.Sequential(
+            modules = [
                 nn.LayerNorm(self.n_embd),
                 nn.Linear(self.n_embd, self.n_embd),
                 nn.GELU(),
                 nn.Linear(self.n_embd, shape[-1]),
+            ]
+            if key == "actions":
+                modules.append(nn.Tanh())
+            self.output_head_dict[key] = nn.Sequential(
+                *modules
             )
         pos_embed = get_1d_sincos_pos_embed_from_grid(self.n_embd, self.max_len)
         pe = torch.from_numpy(pos_embed).float()[None, :, None, :] / 2.0
@@ -353,9 +358,9 @@ class MTM(nn.Module):
         zero_ids = (use_mask == 0).nonzero(as_tuple=True)[0]
 
         idx_array = torch.hstack((ids, zero_ids))
-        ids_restore = torch.argsort(idx_array)
+        ids_restore = torch.argsort(idx_array) # zero_ids first, then ids being ones
 
-        x = x[:, ids]
+        x = x[:, ids] # use_mask == 1 -> keep
         keep_len = len(ids)
         return x, ids_restore, keep_len
 
