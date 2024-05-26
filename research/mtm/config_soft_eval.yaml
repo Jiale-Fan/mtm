@@ -1,0 +1,124 @@
+defaults:
+    - datasets: softgym
+    - override hydra/launcher: slurm
+    - override hydra/output: local
+    - _self_
+
+tokenizers:
+    states:
+      _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
+      patch_size: 16
+      normalize: False
+    actions:
+      _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+    returns:
+      _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+
+model_config:
+    _target_: research.mtm.models.mtm_model.MTMConfig
+    norm: "none"
+    n_embd: 512
+    n_enc_layer: 2
+    n_dec_layer: 1
+    n_head: 4
+    dropout: 0.1
+    loss_keys: null
+    latent_dim: null
+
+state_only_dataset: null
+ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/2024-05-26_00-09-18/saved_models/2024-05-26-00-09-18/model_100.pt
+image_encoder: MLP
+shapes:
+  MLP:
+    states: [64, 768]
+    actions: [1, 8]
+    returns: [1, 1]
+    # rewards: [1, 4, 1]
+    
+
+args:
+    _target_: research.mtm.train.RunConfig
+    seed: 0
+    batch_size: 64
+    n_workers: 10
+    traj_length: 4
+
+    ### Debug
+    # log_every: 1
+    # print_every: 1
+    # eval_every: 1
+    # save_every: 1
+
+    log_every: 100
+    print_every: 1000
+    eval_every: 20000
+    save_every: 10000
+
+    device: cuda
+    mask_ratios: [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0] # ??
+    mask_patterns: ["AUTO_MASK"]
+    warmup_steps: 10 # !!!!! 
+    num_train_steps: 100 # !!!!!
+    learning_rate: 0.0001
+    weight_decay:  0.005
+    mode_weights: [0.2, 0.1, 0.7] # ??
+    tsp_ratio: 1
+
+
+
+env_args:
+  env: RopeFlatten
+  symbolic: False
+  seed: 0
+  max_episode_length: 200
+  action_repeat: 1
+  bit_depth: 8
+  image_dim: 128
+  env_kwargs:
+    observation_mode: cam_rgb
+    action_mode: picker
+    num_picker: 2
+    render: True
+    headless: False
+    horizon: 75
+    action_repeat: 8
+    render_mode: cloth
+    num_variations: 80
+    use_cached_states: True
+    deterministic: False
+  normalize_observation: True
+  scale_reward: 50.0
+  clip_obs: null # 
+
+
+#   reward_scales = {
+#     'PassWater': 20.0,
+#     'PourWater': 20.0,
+#     'ClothFold': 50.0,
+#     'ClothFlatten': 50.0,
+#     'ClothDrop': 50.0,
+#     'RopeFlatten': 50.0,
+# }
+
+# clip_obs = {
+#     'PassWater': None,
+#     'PourWater': None,
+#     'ClothFold': (-3, 3),
+#     'ClothFlatten': (-2, 2),
+#     'ClothDrop': None,
+#     'RopeFlatten': None,
+# }
+
+
+wandb:
+  project: MTM_softgym
+  entity: ""
+  resume: null
+  # resume: allow
+
+job_name: job
+
+hydra:
+    job:
+        name: mtm_softgym_debug
+        chdir: True

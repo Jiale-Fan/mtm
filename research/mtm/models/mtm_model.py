@@ -344,6 +344,10 @@ class MTM(nn.Module):
         return loss, losses, masked_losses, masked_c_losses
 
     def _index(self, x, use_mask):
+        """
+        x: (batch_size, T*tokens_per_time, feature_dim)
+        use_mask: (T*tokens_per_time)
+        """
         assert len(use_mask.shape) == 1
         ids = (use_mask == 1).nonzero(as_tuple=True)[0]
         zero_ids = (use_mask == 0).nonzero(as_tuple=True)[0]

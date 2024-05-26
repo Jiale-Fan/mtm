@@ -31,15 +31,16 @@ def merge_patches(inputs: torch.Tensor, patch_size: int) -> torch.Tensor:
 
 
 class PatchifyTokenizer(Tokenizer):
-    def __init__(self, patch_size: int):
+    def __init__(self, patch_size: int, normalize: bool = True):
         super().__init__()
         self.patch_size = patch_size
+        self.normalize = normalize
 
     @classmethod
     def create(
-        cls, key: str, train_dataset: DatasetProtocol, patch_size: int
+        cls, key: str, train_dataset: DatasetProtocol, patch_size: int, normalize: bool = True
     ) -> "PatchifyTokenizer":
-        return cls(patch_size)
+        return cls(patch_size, normalize)
 
     @property
     def discrete(self) -> bool:
@@ -51,11 +52,12 @@ class PatchifyTokenizer(Tokenizer):
     ) -> torch.Tensor:
         # check shape is consistant with images
         assert trajectory.dim() == 5
-        assert trajectory.min() >= 0
-        assert trajectory.max() <= 255
+        if self.normalize:
+            assert trajectory.min() >= 0
+            assert trajectory.max() <= 255
 
-        # normalize trajectory
-        trajectory = (trajectory / 255) - 0.5
+            # normalize trajectory
+            trajectory = (trajectory / 255) - 0.5
 
         # extract patches
         # reshape to (B, L, H, W, C)
