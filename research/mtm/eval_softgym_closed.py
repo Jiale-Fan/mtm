@@ -37,7 +37,7 @@ from research.mtm.masks import (
     create_goal_n_reaching_masks,
     create_goal_reaching_masks,
     create_inverse_dynamics_mask,
-    create_random_autoregressize_mask,
+    create_random_autoregressive_mask,
     create_random_bc_masks,
     create_random_mask,
     create_random_masks,
@@ -161,7 +161,7 @@ class ShortMemory:
             actions_mask1[:self.seq_len-self.num_valid_states] = 0
         returns_mask = torch.zeros(self.seq_len, device=device)
         returns_mask[-2] = 1 # only the last return is given
-        eval_batch["returns"][:, -2, :] = 1 # TODO: only the last return is given
+        eval_batch["returns"][:, -2, :] = 1000 # TODO: only the last return is given
 
         masks = {
             "states": obs_mask1,
@@ -203,7 +203,7 @@ def _main(hydra_cfg):
         hydra_cfg.dataset, seq_steps=cfg.traj_length
     )
     tokenizers: Dict[str, Tokenizer] = {
-            k: hydra.utils.call(v, key=k, train_dataset=train_dataset)
+            k: hydra.utils.call(v, key=k, train_dataset=val_dataset)
             for k, v in hydra_cfg.tokenizers.items()
         }
 
@@ -233,7 +233,7 @@ def _main(hydra_cfg):
         obs = env.reset()
         done = False
         episode_reward = 0
-        short_memory = ShortMemory(seq_len=4, shapes={"states": (128, 128, 3), "actions": (8)})
+        short_memory = ShortMemory(seq_len=4, shapes={"states": (128, 128, 3), "actions": (4)})
         frames, rewards, actions, keypoints = [], [], [], []
         while not done:
             keypoints.append(obs.to('cpu').numpy())

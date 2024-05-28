@@ -37,7 +37,7 @@ from research.mtm.masks import (
     create_goal_n_reaching_masks,
     create_goal_reaching_masks,
     create_inverse_dynamics_mask,
-    create_random_autoregressize_mask,
+    create_random_autoregressive_mask,
     create_random_bc_masks,
     create_random_mask,
     create_random_masks,
@@ -55,6 +55,7 @@ from research.mtm.utils import (
     get_git_hash,
     set_seed_everywhere,
 )
+from torchinfo import summary
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -172,6 +173,161 @@ def train_one_batch(
         log_dict["train/mse_sum"] = mse_loss
     return log_dict
 
+@torch.inference_mode()
+def evaluate(
+    model: MTM,
+    tokenizer_manager: TokenizerManager,
+    discrete_map: Dict[str, bool],
+    val_batch: Dict[str, torch.Tensor],
+    vis_batch: Dict[str, torch.Tensor],
+    masks: Dict[str, torch.Tensor],
+) -> Dict[str, Any]:
+    encoded_batch = tokenizer_manager.encode(val_batch)
+    predicted_trajectories = model(encoded_batch, masks)
+    model_without_ddp = model.module if hasattr(model, "module") else model
+    (
+        loss,
+        losses_dict,
+        masked_losses,
+        masked_c_losses,
+    ) = MTM.forward_loss(
+        encoded_batch,
+        predicted_trajectories,
+        masks,
+        discrete_map,
+        norm=model_without_ddp.norm,
+        reduce_use_sum=model_without_ddp.config.reduce_use_sum,
+        loss_keys=model_without_ddp.config.loss_keys,
+    )
+
+    log_dict = {"val/val_loss": loss.item()}
+    for k, v in losses_dict.items():
+        log_dict[f"val/full_loss_{k}"] = v.item()
+    for k, v in masked_losses.items():
+        log_dict[f"val/masked_loss_{k}"] = v.item()
+    for k, v in masked_c_losses.items():
+        log_dict[f"val/masked_c_loss_{k}"] = v.item()
+
+    mse_loss = 0
+    predictions = tokenizer_manager.decode(predicted_trajectories)
+    for k, v in predictions.items():
+        _mse = F.mse_loss(v.to(torch.float32), val_batch[k].to(torch.float32)).item()
+        log_dict[f"val/mse_{k}"] = _mse
+        mse_loss += _mse
+    log_dict["val/mse_sum"] = mse_loss
+
+    # if "states" in val_batch and "actions" in val_batch and "images" in val_batch:
+    #     log_images = create_eval_logs_states_actions_images(
+    #         model, vis_batch, tokenizer_manager
+    #     )
+    # elif "states" in val_batch and "actions" in val_batch and "rewards" in val_batch:
+    #     log_images = create_eval_logs_states_actions(
+    #         model, vis_batch, tokenizer_manager, rewards=True
+    #     )
+    # elif "states" in val_batch and "actions" in val_batch:
+    #     log_images = create_eval_logs_states_actions(
+    #         model, vis_batch, tokenizer_manager
+    #     )
+    # elif "states" in val_batch:
+    #     log_images = create_eval_logs_states(model, vis_batch, tokenizer_manager)
+    # elif "images" in val_batch:
+    #     log_images = create_eval_logs_actions_images(
+    #         model, vis_batch, tokenizer_manager
+    #     )
+    # else:
+    #     raise NotImplementedError
+    # log_dict.update(log_images)
+    return log_dict
+
+def eval_fd(
+    model: MTM,
+    env,
+    eval_batch,
+    tokenizer_manager,
+    ratio: int = 1,
+) -> Dict[str, Any]:
+    """Evaluate the model on the forward dynamics task.
+    Args:
+        env (gym.Env): env
+        eval_batch (Dict[str, torch.Tensor]): eval_batch
+        tokenizer_manager (TokenizerManager): tokenizer_manager
+    """
+    seq_len = eval_batch["actions"].shape[1]
+    device = eval_batch["states"].device
+    assert seq_len >= 2, "Forward dynamics eval only works for seq_len=2"
+
+    # Given initial state and all actions. Predict future states.
+    obs_mask1 = torch.ones(seq_len, device=device)
+    obs_mask1[-1] = 0
+    actions_mask1 = torch.zeros(seq_len, device=device)
+    actions_mask1[-2] = 1
+    returns_mask = torch.zeros(seq_len, device=device)
+    masks = {
+        "states": obs_mask1,
+        "actions": actions_mask1,
+        "returns": returns_mask,
+    }
+
+    predictions = model.mask_git_forward(
+        tokenizer_manager.encode(eval_batch),
+        masks,
+        ratio=ratio,
+    )
+    predicted_next_state = tokenizer_manager.decode(predictions)["states"]
+
+    states = eval_batch["states"]
+    next_state = states[:, -1]
+    state_error = (next_state - predicted_next_state[:, -1, :]) ** 2
+    eval_dict = {}
+    eval_dict[f"eval/fd_state_error_r={ratio}"] = torch.mean(state_error).item()
+    return eval_dict
+
+
+def eval_id(
+    model: MTM, env, eval_batch, tokenizer_manager, ratio: int = 1
+) -> Dict[str, Any]:
+    """Evaluate the model on the inverse dynamics task.
+    Args:
+        env (gym.Env): env
+        eval_batch (Dict[str, torch.Tensor]): eval_batch
+        tokenizer_manager (TokenizerManager): tokenizer_manager
+    """
+    seq_len = eval_batch["actions"].shape[1]
+    # B, T, S = eval_batch["states"].shape
+    device = eval_batch["states"].device
+    assert seq_len >= 2, "Forward dynamics eval only works for seq_len=2"
+
+    # Given all states. Predict second to last action.
+    obs_mask1 = torch.ones(seq_len, device=device)
+    actions_mask1 = torch.zeros(seq_len, device=device)
+    returns_mask = torch.ones(seq_len, device=device) # TODO: if the return should be given?? formly set to 1
+    masks = {
+        "states": obs_mask1,
+        "actions": actions_mask1,
+        "returns": returns_mask,
+    }
+
+    predictions = model.mask_git_forward(
+        tokenizer_manager.encode(eval_batch), masks, ratio=ratio
+    )
+    predicted_actions = tokenizer_manager.decode(predictions)["actions"]
+    predicted_action = predicted_actions[:, -2, :]
+
+    state_error = []
+    gt_state_error = []
+    action_error = []
+
+    states = eval_batch["states"]
+    actions = eval_batch["actions"]
+    actions = eval_batch["actions"][:, -2, :]
+
+    action_error = ((predicted_action - actions) ** 2).mean()
+    eval_dict = {}
+    eval_dict[f"eval/id_action_error_r={ratio}"] = torch.mean(
+        torch.tensor(action_error)
+    ).item()
+    return eval_dict
+
 
 def main(hydra_cfg):
     _main(hydra_cfg)
@@ -257,7 +413,7 @@ def _main(hydra_cfg):
     with stopwatch("data loader"):
         train_loader = DataLoader(
             train_dataset,
-            # shuffle=True,
+            # shuffle=True, # sampler option is mutually exclusive with shuffle
             pin_memory=True,
             batch_size=cfg.batch_size,
             num_workers=cfg.n_workers,
@@ -354,7 +510,7 @@ def _main(hydra_cfg):
         MaskType.FULL_RANDOM: lambda: create_full_random_masks(
             data_shapes, cfg.mask_ratios, cfg.traj_length, cfg.device
         ),
-        MaskType.AUTO_MASK: lambda: create_random_autoregressize_mask(
+        MaskType.AUTO_MASK: lambda: create_random_autoregressive_mask(
             data_shapes, cfg.mask_ratios, cfg.traj_length, cfg.device, cfg.mode_weights
         ),
         MaskType.RCBC: lambda: create_rcbc_mask(cfg.traj_length, cfg.device),
@@ -409,11 +565,20 @@ def _main(hydra_cfg):
     }
 
     mask_functions = [mask_functions_map[MaskType[i]] for i in cfg.mask_patterns]
+    eval_max = defaultdict(lambda: -np.inf)
+    eval_masks = create_random_masks(
+        data_shapes, [0.5], cfg.traj_length, cfg.device
+    ) # lock the mask ratio to be 0.5
 
     epoch = 0
     step = 0
 
     batch_iter = iter(train_loader)
+
+
+    summary(model)
+
+    # begin the training loop
     while True:
         B = time.time()
         log_dict = {}
@@ -467,6 +632,57 @@ def _main(hydra_cfg):
                 },
                 f"model_{step}.pt",
             )
+
+        if step % cfg.eval_every == 0 and step != 0:
+            # if step % cfg.eval_every == 0:
+            # evaluate the model
+            start_time = time.time()
+            model.eval()
+            val_batch = next(iter(val_loader))
+            val_batch = {
+                k: v.to(cfg.device, non_blocking=True) for k, v in val_batch.items()
+            }
+
+            # log_dict = val_dataset.eval_logs(model, tokenizer_manager)
+            log_dict = {}
+
+            _val_dict = evaluate(
+                model,
+                tokenizer_manager,
+                discrete_map,
+                val_batch,
+                vis_batch,
+                eval_masks,
+            )
+            log_dict.update(_val_dict)
+
+            # for everything with eval prefix keep the max
+            max_log = {}
+            for k, v in log_dict.items():
+                if k.startswith("eval"):
+                    eval_max[k] = max(eval_max[k], v)
+                    max_log[f"max_{k}"] = eval_max[k]
+            log_dict.update(max_log)
+
+            wandb_logger.log(
+                {f"p_{k}": v for k, v in max_log.items()},
+                step=0,  # use step 0 to log to the same bar plot
+            )
+            log_dict["time/eval_time"] = time.time() - start_time
+
+            if cfg.traj_length >= 2:
+                log_dict.update(
+                    eval_fd(model, None, val_batch, tokenizer_manager)
+                )
+                log_dict.update(
+                    eval_id(model, None, val_batch, tokenizer_manager)
+                )
+
+            wandb_logger.log(log_dict, step=step)
+            val_loss = log_dict["val/val_loss"]
+            logger.info(f"Step: {step}, Val Loss: {val_loss}")
+            model.train()
+
 
         if step % cfg.log_every == 0:
         # if random.randint(0, cfg.log_every) == 0:

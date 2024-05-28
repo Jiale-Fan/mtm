@@ -35,7 +35,7 @@ class ContinuousTokenizer(Tokenizer):
         stats = train_dataset.trajectory_statistics()[key]
         data_mean = stats.mean
         data_std = stats.std
-        data_std[data_std < 0.1] = 1  # do not normalize if std is too small
+        # data_std[data_std < 0.1] = 1  # do not normalize if std is too small
         return cls(data_mean, data_std, stats, normalize=normalize)
 
     @property

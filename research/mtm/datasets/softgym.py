@@ -28,7 +28,6 @@ def get_datasets(
     discount: float = 0.99,
 ):
     """
-    **Unfinished**
     Get the training and validation datasets for softgym environment.
     """
     # home = Path.home()
@@ -59,7 +58,12 @@ class SoftgymDataset(Dataset, DatasetProtocol):
         dataset_path: str,
         traj_length: int = 4,
         discount: float = 0.99,
+        states_type: str = "keypoints",
     ):
+
+        assert states_type in ["keypoints", "rgb", "depth"], "states_type should be one of keypoints, rgb, depth"
+        self.states_type = states_type
+
         self._traj_length = traj_length
 
         data_objs = glob.glob(str(dataset_path) + '/*.pkl')
@@ -83,11 +87,17 @@ class SoftgymDataset(Dataset, DatasetProtocol):
         # data buffer structures:
         # prepare actions, states, rewards, returns
         self.actions = np.array(merged_data_obj['actions']) # [n_paths x n_timesteps x action_dim]
-        self.states = np.array(merged_data_obj['states'])
+        self.rgb = np.array(merged_data_obj['states'])
         self.rewards = np.array(merged_data_obj['rewards'])
         self.keypoints = np.array(merged_data_obj['keypoints'])
+        self.depths = np.array(merged_data_obj['depths'])
         # TODO: more modality? such as depth?
 
+        # process the grasp flag of the actions
+        self.grasp_flags = self.actions[..., -1]
+        new_flags = np.ones(self.grasp_flags.shape)
+        new_flags[self.grasp_flags < 0] = -1
+        self.actions[..., -1] = new_flags
 
         self.returns = np.zeros(self.rewards.shape)
 
@@ -127,15 +137,24 @@ class SoftgymDataset(Dataset, DatasetProtocol):
         self.returns = self.returns[..., None]
         self.rewards = self.rewards[..., None]
 
+    def filter_trajectories(self) -> None:
+        "We can filter the trajectories, probably based on stationarity, or low returns, etc."
+        pass
+
+    # @property
+    # def env(self) -> None:
+    #     return None
+    #     # to be compatible wit
+
 
     def trajectory_statistics(self) -> Dict[str, DataStatistics]:
 
-        return {
+        ret = {
             "actions": DataStatistics(
-                mean=self.actions.mean(axis=(0, 1), keepdims=True),
-                std=self.actions.std(axis=(0, 1), keepdims=True),
-                min=self.actions.min(axis=(0, 1), keepdims=True),
-                max=self.actions.max(axis=(0, 1), keepdims=True),
+                mean=self.actions.mean(axis=None, keepdims=True),
+                std=self.actions.std(axis=None, keepdims=True),
+                min=self.actions.min(axis=None, keepdims=True),
+                max=self.actions.max(axis=None, keepdims=True),
             ),
             "rewards": DataStatistics(
                 mean=self.rewards.mean(axis=(0, 1), keepdims=True),
@@ -149,16 +168,32 @@ class SoftgymDataset(Dataset, DatasetProtocol):
                 min=self.returns.min(axis=(0, 1), keepdims=True),
                 max=self.returns.max(axis=(0, 1), keepdims=True),
             ),
+            "keypoints": DataStatistics(
+                mean=self.keypoints.mean(axis=None, keepdims=True),
+                std=self.keypoints.std(axis=None, keepdims=True),
+                min=self.keypoints.min(axis=None, keepdims=True),
+                max=self.keypoints.max(axis=None, keepdims=True),
+            ),
         }
-        # raise NotImplementedError("This function should not be called. \
-        #                           This function needs an override implementation by the requirements of the base class. \
-        #                           The statistics of the trajectories are typically used for normalization purposes, \
-        #                           which is not needed for this dataset. ")
+        if self.states_type == "keypoints":
+            ret["states"] = ret["keypoints"]
+        return ret
 
 
     def __len__(self) -> int:
         # return self.num_trajectories
         return len(self.index_map)
+    
+    @property
+    def states(self) -> np.ndarray:
+        if self.states_type == "keypoints":
+            return self.keypoints
+        elif self.states_type == "rgb":
+            return self.rgb
+        elif self.states_type == "depth":
+            return self.depths
+        else:
+            raise ValueError("states_type should be one of keypoints, rgb, depth")
 
     def get_trajectory(self, traj_index: int) -> Dict[str, np.ndarray]:
         return {
@@ -166,6 +201,8 @@ class SoftgymDataset(Dataset, DatasetProtocol):
             "actions": self.actions[traj_index],
             "rewards": self.rewards[traj_index],
             "returns": self.returns[traj_index],
+            "keypoints": self.keypoints[traj_index],
+            "depths": self.depths[traj_index],
         }
 
     def __getitem__(self, index: int) -> Dict[str, np.ndarray]:

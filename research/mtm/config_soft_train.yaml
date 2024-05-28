@@ -6,23 +6,29 @@ defaults:
 
 tokenizers:
     states:
-      _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
-      patch_size: 16
+      _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
       normalize: True
+    # if states are rgb images 
+    # states:
+    #   _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
+    #   patch_size: 16
+    #   normalize: True
     actions:
       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+      normalize: True
     returns:
       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+      normalize: True
 
 model_config:
     _target_: research.mtm.models.mtm_model.MTMConfig
     norm: "none"
-    n_embd: 512
-    n_enc_layer: 2
+    n_embd: 256
+    n_enc_layer: 1
     n_dec_layer: 1
     n_head: 4
     dropout: 0.1
-    loss_keys: null
+    loss_keys: [states]
     latent_dim: null
 
 state_only_dataset: null
@@ -30,7 +36,7 @@ state_only_dataset: null
 args:
     _target_: research.mtm.train.RunConfig
     seed: 0
-    batch_size: 64
+    batch_size: 128
     n_workers: 10
     traj_length: 4
 
@@ -42,15 +48,15 @@ args:
 
     log_every: 50
     print_every: 100
-    eval_every: 20000
-    save_every: 10000
+    eval_every: 1000
+    save_every: 2000
 
     device: cuda
     mask_ratios: [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0] 
-    mask_patterns: ["AUTO_MASK"]
-    warmup_steps: 40000 # !!!!! 
-    num_train_steps: 140000 # !!!!!
-    learning_rate: 0.0001
+    mask_patterns: ["FD"] # every step mask pattern is uniformly sampled from this list
+    warmup_steps: 1000 # !!!!! 
+    num_train_steps: 10000 # !!!!!
+    learning_rate: 1e-4
     weight_decay:  0.005
     mode_weights: [0.2, 0.1, 0.7] 
     tsp_ratio: 1 # used for training with state-only dataset, not used for now
@@ -60,7 +66,7 @@ wandb:
   project: MTM_softgym
   entity: "jialef22"
   resume: null
-  name: v0.3
+  name: "v0.3"
   # resume: allow
 
 job_name: job

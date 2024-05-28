@@ -6,19 +6,25 @@ defaults:
 
 tokenizers:
     states:
-      _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
-      patch_size: 16
-      normalize: False
+      _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+      normalize: True
+    # if states are rgb images 
+    # states:
+    #   _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
+    #   patch_size: 16
+    #   normalize: True
     actions:
       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+      normalize: True
     returns:
       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+      normalize: True
 
 model_config:
     _target_: research.mtm.models.mtm_model.MTMConfig
     norm: "none"
-    n_embd: 512
-    n_enc_layer: 2
+    n_embd: 256
+    n_enc_layer: 1
     n_dec_layer: 1
     n_head: 4
     dropout: 0.1
@@ -26,12 +32,13 @@ model_config:
     latent_dim: null
 
 state_only_dataset: null
-ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/2024-05-26_00-09-18/saved_models/2024-05-26-00-09-18/model_100.pt
+ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/2024-05-28_14-49-06/saved_models/2024-05-28-14-49-06/model_10000.pt
 image_encoder: MLP
 shapes:
   MLP:
-    states: [64, 768]
-    actions: [1, 8]
+    # states: [64, 768]
+    states: [1, 33]
+    actions: [1, 4]
     returns: [1, 1]
     # rewards: [1, 4, 1]
     
@@ -49,14 +56,9 @@ args:
     # eval_every: 1
     # save_every: 1
 
-    log_every: 100
-    print_every: 1000
-    eval_every: 20000
-    save_every: 10000
-
     device: cuda
     mask_ratios: [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0] # ??
-    mask_patterns: ["AUTO_MASK"]
+    mask_patterns: ["FD"]
     warmup_steps: 10 # !!!!! 
     num_train_steps: 100 # !!!!!
     learning_rate: 0.0001
@@ -77,7 +79,7 @@ env_args:
   env_kwargs:
     observation_mode: cam_rgb
     action_mode: picker
-    num_picker: 2
+    num_picker: 1
     render: True
     headless: False
     horizon: 75

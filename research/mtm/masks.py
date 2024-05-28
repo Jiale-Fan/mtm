@@ -179,7 +179,8 @@ def create_forward_dynamics_mask(
     device: str,
 ) -> Dict[str, np.ndarray]:
     state_mask = np.zeros(traj_length)
-    index = np.random.randint(0, traj_length - 1)
+    # index = np.random.randint(0, traj_length - 1) # random index
+    index = traj_length - 1 # only exclude the last state
     state_mask[:index] = 1
 
     action_mask = np.ones(traj_length)
@@ -269,7 +270,7 @@ def create_rcbc_mask(
     }
 
 
-def create_random_autoregressize_mask(
+def create_random_autoregressive_mask(
     data_shapes, mask_ratios, traj_length, device, p_weights=(0.2, 0.1, 0.7)
 ) -> Dict[str, np.ndarray]:
     mode_order = ["states", "returns", "actions"]
@@ -320,31 +321,31 @@ def create_random_bc_masks(
 
 
 def main():
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [1], 2, "cpu"
     )
     print(m)
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [1], 2, "cpu"
     )
     print(m)
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [1], 2, "cpu"
     )
     print(m)
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [1], 2, "cpu"
     )
     print(m)
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [1], 2, "cpu"
     )
     print(m)
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [1], 2, "cpu"
     )
     print(m)
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [1], 4, "cpu"
     )
     print(m)
@@ -352,19 +353,19 @@ def main():
     print()
     print()
     print()
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [0.35], 4, "cpu"
     )
     print(m)
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [0.35], 4, "cpu"
     )
     print(m)
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [0.35], 4, "cpu"
     )
     print(m)
-    m = create_random_autoregressize_mask(
+    m = create_random_autoregressive_mask(
         {"states": (3, 100), "returns": (1, 100), "actions": (2, 100)}, [0.35], 4, "cpu"
     )
     print(m)

@@ -36,7 +36,7 @@ from research.mtm.masks import (
     create_goal_n_reaching_masks,
     create_goal_reaching_masks,
     create_inverse_dynamics_mask,
-    create_random_autoregressize_mask,
+    create_random_autoregressive_mask,
     create_random_bc_masks,
     create_random_mask,
     create_random_masks,
@@ -916,7 +916,7 @@ def _main(hydra_cfg):
         MaskType.FULL_RANDOM: lambda: create_full_random_masks(
             data_shapes, cfg.mask_ratios, cfg.traj_length, cfg.device
         ),
-        MaskType.AUTO_MASK: lambda: create_random_autoregressize_mask(
+        MaskType.AUTO_MASK: lambda: create_random_autoregressive_mask(
             data_shapes, cfg.mask_ratios, cfg.traj_length, cfg.device, cfg.mode_weights
         ),
         MaskType.RCBC: lambda: create_rcbc_mask(cfg.traj_length, cfg.device),
