@@ -23,8 +23,8 @@ tokenizers:
 model_config:
     _target_: research.mtm.models.mtm_model.MTMConfig
     norm: "none"
-    n_embd: 256
-    n_enc_layer: 1
+    n_embd: 512
+    n_enc_layer: 2
     n_dec_layer: 1
     n_head: 4
     dropout: 0.1
@@ -32,7 +32,7 @@ model_config:
     latent_dim: null
 
 state_only_dataset: null
-ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/2024-05-28_14-49-06/saved_models/2024-05-28-14-49-06/model_10000.pt
+ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/2024-05-28_16-01-30/saved_models/2024-05-28-16-01-30/model_10000.pt
 image_encoder: MLP
 shapes:
   MLP:
@@ -70,14 +70,15 @@ args:
 
 env_args:
   env: RopeFlatten
-  symbolic: False
+  symbolic: True #### = if observation_mode is not cam_rgb
   seed: 0
   max_episode_length: 200
   action_repeat: 1
   bit_depth: 8
   image_dim: 128
   env_kwargs:
-    observation_mode: cam_rgb
+    # observation_mode: cam_rgb
+    observation_mode: key_point
     action_mode: picker
     num_picker: 1
     render: True

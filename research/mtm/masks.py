@@ -179,8 +179,8 @@ def create_forward_dynamics_mask(
     device: str,
 ) -> Dict[str, np.ndarray]:
     state_mask = np.zeros(traj_length)
-    # index = np.random.randint(0, traj_length - 1) # random index
-    index = traj_length - 1 # only exclude the last state
+    index = np.random.randint(1, traj_length - 1) # random index
+    # index = traj_length - 1 # only exclude the last state
     state_mask[:index] = 1
 
     action_mask = np.ones(traj_length)

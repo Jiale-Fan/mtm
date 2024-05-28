@@ -119,13 +119,23 @@ class RunConfig:
     """
 
 class ShortMemory:
-    def __init__(self, seq_len, shapes: Dict[str, Tuple[int, int]]):
+    def __init__(self, seq_len, shapes: Dict[str, Tuple[int, int]], init_rtg = 8, expected_rps = 0.3, obs_type = "rgb"):
         self.seq_len = seq_len
         assert seq_len >= 2
         self.shapes = shapes
         self.states_memory = deque([torch.zeros(shapes["states"])] * seq_len, maxlen=seq_len)
         self.actions_memory = deque([torch.zeros(shapes["actions"])] * (seq_len-1), maxlen=seq_len-1) # maximum length of seq_len -1
+        self.rewards_memory = deque([torch.zeros((1))] * (seq_len-1), maxlen=seq_len-1)
+        self.returns_memory = deque([torch.zeros((1))] * seq_len, maxlen=seq_len)
+        self.returns_memory.append(torch.tensor([init_rtg]))
+        self.expected_rps = expected_rps
         self.num_valid_states = 0
+        self.obs_type = obs_type
+
+    def append_reward(self, reward):
+        self.rewards_memory.append(reward)
+        self.returns_memory[-1] = self.returns_memory[-2] - reward
+
     def get_action(
         self,
         model: MTM,
@@ -142,12 +152,19 @@ class ShortMemory:
         if self.num_valid_states < self.seq_len:
             self.num_valid_states += 1
 
-        self.states_memory.append(obs.squeeze(0).permute(1,2,0))
+        if self.obs_type == "rgb":
+            self.states_memory.append(obs.squeeze(0).permute(1,2,0))
+        elif self.obs_type == "keypoints":
+            self.states_memory.append(obs)
+        else:
+            raise ValueError("obs_type should be one of rgb, keypoints")
+
+        self.returns_memory.append(self.returns_memory[-1] - torch.tensor([self.expected_rps]) )
 
         eval_batch = {
             "states": torch.stack(list(self.states_memory)).unsqueeze(0),
             "actions": torch.stack(list(self.actions_memory)+[torch.zeros(self.shapes["actions"])]).unsqueeze(0),
-            "returns": torch.zeros(1, self.seq_len, 1), # TODO: how to give the return to illicit the best action?
+            "returns": torch.stack(list(self.returns_memory)).unsqueeze(0), # TODO: how to give the return to illicit the best action?
         }
 
         device = eval_batch["states"].device
@@ -159,9 +176,8 @@ class ShortMemory:
         else:
             actions_mask1 = torch.ones(self.seq_len, device=device)
             actions_mask1[:self.seq_len-self.num_valid_states] = 0
-        returns_mask = torch.zeros(self.seq_len, device=device)
-        returns_mask[-2] = 1 # only the last return is given
-        eval_batch["returns"][:, -2, :] = 1000 # TODO: only the last return is given
+        returns_mask = torch.ones(self.seq_len, device=device)
+        returns_mask[:self.seq_len-self.num_valid_states] = 0
 
         masks = {
             "states": obs_mask1,
@@ -203,7 +219,7 @@ def _main(hydra_cfg):
         hydra_cfg.dataset, seq_steps=cfg.traj_length
     )
     tokenizers: Dict[str, Tokenizer] = {
-            k: hydra.utils.call(v, key=k, train_dataset=val_dataset)
+            k: hydra.utils.call(v, key=k, train_dataset=train_dataset)
             for k, v in hydra_cfg.tokenizers.items()
         }
 
@@ -233,14 +249,17 @@ def _main(hydra_cfg):
         obs = env.reset()
         done = False
         episode_reward = 0
-        short_memory = ShortMemory(seq_len=4, shapes={"states": (128, 128, 3), "actions": (4)})
+        # short_memory = ShortMemory(seq_len=4, shapes={"states": (128, 128, 3), "actions": (4)})
+        short_memory = ShortMemory(seq_len=4, shapes={"states": (33), "actions": (4)}, obs_type="keypoints")
         frames, rewards, actions, keypoints = [], [], [], []
         while not done:
             keypoints.append(obs.to('cpu').numpy())
             frames.append(env.get_image(128, 128))
-            action = short_memory.get_action(model, obs, tokenizer_manager, ratio=1, no_prev_action=True)
+            action = short_memory.get_action(model, obs, tokenizer_manager, ratio=1, no_prev_action=False)
             action = action.detach().to('cpu').numpy()
             obs, reward, done, info = env.step(action)
+
+            short_memory.append_reward(reward)
 
             actions.append(action)
             rewards.append(reward)

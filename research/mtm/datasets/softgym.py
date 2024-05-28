@@ -15,6 +15,8 @@ from research.mtm.tokenizers.base import TokenizerManager
 import os
 import glob
 
+from sklearn.cluster import KMeans
+
 
 def load_episodes(fn):
     print(f"Loading episodes from {fn}")
@@ -145,6 +147,14 @@ class SoftgymDataset(Dataset, DatasetProtocol):
     # def env(self) -> None:
     #     return None
     #     # to be compatible wit
+
+    def cluster_actions(self, n_clusters: int = 4) -> None:
+        """
+        Cluster the actions into n_clusters clusters using KMeans.
+        """
+        self.kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(self.actions.reshape(-1, self.actions.shape[-1]))
+        self.actions_centers = self.kmeans.cluster_centers_
+        return self.kmeans
 
 
     def trajectory_statistics(self) -> Dict[str, DataStatistics]:
