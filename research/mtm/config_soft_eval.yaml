@@ -4,6 +4,22 @@ defaults:
     - override hydra/output: local
     - _self_
 
+# tokenizers:
+#     states:
+#       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+#       normalize: True
+#     # if states are rgb images 
+#     # states:
+#     #   _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
+#     #   patch_size: 16
+#     #   normalize: True
+#     actions:
+#       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+#       normalize: True
+#     returns:
+#       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+#       normalize: True
+
 tokenizers:
     states:
       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
@@ -14,9 +30,12 @@ tokenizers:
     #   patch_size: 16
     #   normalize: True
     actions:
-      _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
-      normalize: True
-    returns:
+      _target_: research.mtm.tokenizers.discrete_action.DiscreteActionsTokenizer.create
+      embedding_dim: 512 # need to be the same as model_config.n_embd
+    # returns:
+    #   _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+    #   normalize: True
+    rewards:
       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
       normalize: True
 
@@ -28,19 +47,19 @@ model_config:
     n_dec_layer: 1
     n_head: 4
     dropout: 0.1
-    loss_keys: null
+    loss_keys: [states, actions, rewards]
     latent_dim: null
 
 state_only_dataset: null
-ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/2024-05-28_16-01-30/saved_models/2024-05-28-16-01-30/model_10000.pt
+ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/v0.7/saved_models/2024-05-29-18-40-38/model_35000.pt
 image_encoder: MLP
 shapes:
   MLP:
     # states: [64, 768]
     states: [1, 33]
-    actions: [1, 4]
-    returns: [1, 1]
-    # rewards: [1, 4, 1]
+    actions: [1, 512]
+    rewards: [1, 1]
+    # returns: [1, 4, 1]
     
 
 args:

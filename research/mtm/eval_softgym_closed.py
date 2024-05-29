@@ -118,6 +118,14 @@ class RunConfig:
     2 means train state only every other step, etc.
     """
 
+def deepcopy_dict_of_tensors(dict_of_tensors):
+    # Create a new dictionary to hold the deep copies
+    deep_copied_dict = {}
+    for key, tensor in dict_of_tensors.items():
+        # Use tensor.clone() to create a deep copy of each tensor
+        deep_copied_dict[key] = tensor.clone()
+    return deep_copied_dict
+
 class ShortMemory:
     def __init__(self, seq_len, shapes: Dict[str, Tuple[int, int]], init_rtg = 8, expected_rps = 0.3, obs_type = "rgb"):
         self.seq_len = seq_len
@@ -144,11 +152,7 @@ class ShortMemory:
         ratio: int = 1,
         no_prev_action: bool = False,
     ) -> Dict[str, Any]:
-        """Evaluate the model on the forward dynamics task.
-        Args:
-            obs: [1, 128, 128, 3]
-            tokenizer_manager (TokenizerManager): tokenizer_manager
-        """
+
         if self.num_valid_states < self.seq_len:
             self.num_valid_states += 1
 
@@ -195,6 +199,176 @@ class ShortMemory:
         self.actions_memory.append(predicted_next_action)
 
         return predicted_next_action
+    
+    def get_action_beam_search(
+        self,
+        model: MTM,
+        obs: torch.Tensor,
+        tokenizer_manager,
+        ratio: int = 1,
+        no_prev_action: bool = False,
+        horizon: int = 5,
+        beam_size: int = 5,
+    ) -> Dict[str, Any]:
+
+        if self.num_valid_states < self.seq_len:
+            self.num_valid_states += 1
+
+        if self.obs_type == "rgb":
+            self.states_memory.append(obs.squeeze(0).permute(1,2,0))
+        elif self.obs_type == "keypoints":
+            self.states_memory.append(obs)
+        else:
+            raise ValueError("obs_type should be one of rgb, keypoints")
+
+        self.returns_memory.append(self.returns_memory[-1] - torch.tensor([self.expected_rps]) )
+
+        eval_batch = {
+            "states": torch.stack(list(self.states_memory)).unsqueeze(0),
+            "actions": torch.stack(list(self.actions_memory)+[torch.zeros(self.shapes["actions"])]).unsqueeze(0),
+            "returns": torch.stack(list(self.returns_memory)).unsqueeze(0), # TODO: how to give the return to illicit the best action?
+        }
+
+        device = eval_batch["states"].device
+        
+        obs_mask1 = torch.ones(self.seq_len, device=device)
+        obs_mask1[:self.seq_len-self.num_valid_states] = 0
+        if no_prev_action:
+            actions_mask1 = torch.zeros(self.seq_len, device=device)
+        else:
+            actions_mask1 = torch.ones(self.seq_len, device=device)
+            actions_mask1[:self.seq_len-self.num_valid_states] = 0
+        returns_mask = torch.ones(self.seq_len, device=device)
+        returns_mask[:self.seq_len-self.num_valid_states] = 0
+
+
+
+        encoded_batch = tokenizer_manager.encode(eval_batch)
+        encoded_batch["actions"] = encoded_batch["actions"].to('cpu')
+        new_nodes = [[encoded_batch, 0]]
+        for i in range(horizon):
+            to_expand = new_nodes
+            new_nodes = []
+            for node, r in to_expand:
+                # utilize behavior cloning to get the top k actions for each node
+                node_actions = self.forward_behavior_cloning(model, tokenizer_manager, node, level=i, top_k=beam_size) # top_k does not necessarily need to equal beam_size
+                for node_action in node_actions:
+                    # utilize the reward prediction to get the reward for each node
+                    new_node, pred_reward = self.forward_reward_prediction(model, tokenizer_manager, node_action, level=i)
+                    new_nodes.append([new_node, r+pred_reward])
+                # choose the top k nodes
+                new_nodes = sorted(new_nodes, key=lambda x: x[1], reverse=True)[:beam_size]
+            
+            # forecasting the next state using the forward dynamics
+            if i != horizon-1:
+                new_nodes = [[self.forward_forward_dynamics(model, tokenizer_manager, node, level=i+1), r] for node, r in new_nodes]
+            else:
+                break
+
+        action_to_execute = new_nodes[0][0]["actions"][0, -1, 0, :] # this action is in token form
+        decoded_action = tokenizer_manager.tokenizers["actions"].decode(action_to_execute.reshape(1, 1, 1, -1).to('cuda'))
+
+        squeezed_action = decoded_action.reshape(-1)
+        self.actions_memory.append(squeezed_action.to('cpu'))
+
+        return squeezed_action
+    
+    def forward_behavior_cloning(self, model, tokenizer_manager, encoded_batch, level, top_k=5, ):
+
+        device = encoded_batch["states"].device
+
+        masks = {
+            "states": torch.ones(self.seq_len, device=device),
+            "actions": torch.ones(self.seq_len, device=device),
+            "rewards": torch.zeros(self.seq_len, device=device),
+        }
+        masks["actions"][-1] = 0
+        if self.num_valid_states+level < self.seq_len:
+            masks["states"][:self.seq_len-(self.num_valid_states+level)] = 0
+            masks["actions"][:self.seq_len-(self.num_valid_states+level)] = 0
+            # masks["rewards"][:self.seq_len-(self.num_valid_states+level)] = 0
+
+        pred_encoded = model.mask_git_forward(
+            encoded_batch,
+            masks,
+            ratio=1,
+        )
+        pred_reward = tokenizer_manager.tokenizers["actions"].get_probs(pred_encoded["actions"].to('cuda')) # (1, n_clusters)
+        top_k_actions = torch.topk(pred_reward, top_k, dim=-1).indices[0, -1]
+        most_possible_action_tokens = tokenizer_manager.tokenizers["actions"].look_up_token(top_k_actions)
+        ret = []
+        for i in range(top_k):
+            new_encoded_batch = deepcopy_dict_of_tensors(encoded_batch)
+            new_encoded_batch["actions"][:,-1,0,:] = most_possible_action_tokens[i].unsqueeze(0)
+            ret.append(new_encoded_batch)
+
+        return ret
+
+
+    def forward_reward_prediction(self, model, tokenizer_manager, encoded_batch, level, ):
+        """
+            masks: Dict["states": torch.Tensor [T], "actions": torch.Tensor [T], "rewards": torch.Tensor [T]
+            eval_batch: Dict["states": torch.Tensor [B, T, N, dim], "actions": torch.Tensor [B, T, 1, dim], "rewards": torch.Tensor [B, T, 1, dim]
+        
+        """
+
+        device = encoded_batch["states"].device
+        encoded_batch["rewards"] = torch.zeros([1, self.seq_len, 1, 1])
+
+        masks = {
+            "states": torch.ones(self.seq_len, device=device),
+            "actions": torch.ones(self.seq_len, device=device),
+            "rewards": torch.zeros(self.seq_len, device=device), # ? maybe should be 1
+        }
+        if self.num_valid_states+level < self.seq_len:
+            masks["states"][:self.seq_len-(self.num_valid_states+level)] = 0
+            masks["actions"][:self.seq_len-(self.num_valid_states+level)] = 0
+            # masks["rewards"][:self.seq_len-(self.num_valid_states+level)] = 0
+
+
+        pred_encoded = model.mask_git_forward(
+            encoded_batch,
+            masks,
+            ratio=1,
+        )
+        pred_reward = tokenizer_manager.tokenizers["rewards"].decode(pred_encoded["rewards"])[0, -1]
+
+        encoded_batch["rewards"][:, -1] = pred_reward
+
+        return encoded_batch, pred_reward
+
+    def forward_forward_dynamics(self, model, tokenizer_manager, encoded_batch, level):
+        device = encoded_batch["states"].device
+        masks = {
+            "states": torch.ones(self.seq_len, device=device),
+            "actions": torch.ones(self.seq_len, device=device),
+            "rewards": torch.zeros(self.seq_len, device=device), # ? maybe should be 1
+        }
+        masks["actions"][-1] = 0
+        masks["states"][-1] = 0
+        if self.num_valid_states+level < self.seq_len:
+            masks["states"][:self.seq_len-(self.num_valid_states+level)] = 0
+            masks["actions"][:self.seq_len-(self.num_valid_states+level)] = 0
+            # masks["rewards"][:self.seq_len-(self.num_valid_states+level)] = 0
+
+        shifted_encoded_batch = {
+            "states": torch.cat([encoded_batch["states"][:, 1:], torch.zeros_like(encoded_batch["states"][:, -1:])], dim=1),
+            "actions": torch.cat([encoded_batch["actions"][:, 1:], torch.zeros_like(encoded_batch["actions"][:, -1:])], dim=1),
+            "rewards": torch.cat([encoded_batch["rewards"][:, 1:], torch.zeros_like(encoded_batch["rewards"][:, -1:])], dim=1),
+        }
+        pred_encoded = model.mask_git_forward(
+            shifted_encoded_batch,
+            masks,
+            ratio=1,
+        )
+        new_node = {
+            "states": torch.cat([encoded_batch["states"][:, :-1], pred_encoded["states"][:, -1:]], dim=1),
+            "actions": torch.cat([encoded_batch["actions"][:, :-1], pred_encoded["actions"][:, -1:]], dim=1),
+            "rewards": torch.cat([encoded_batch["rewards"][:, :-1], pred_encoded["rewards"][:, -1:]], dim=1),
+        }
+
+        return new_node
+    
 
 
 def main(hydra_cfg):
@@ -255,7 +429,9 @@ def _main(hydra_cfg):
         while not done:
             keypoints.append(obs.to('cpu').numpy())
             frames.append(env.get_image(128, 128))
-            action = short_memory.get_action(model, obs, tokenizer_manager, ratio=1, no_prev_action=False)
+            # action = short_memory.get_action(model, obs, tokenizer_manager, ratio=1, no_prev_action=False)
+            with torch.no_grad():
+                action = short_memory.get_action_beam_search(model, obs, tokenizer_manager, ratio=1, no_prev_action=False)
             action = action.detach().to('cpu').numpy()
             obs, reward, done, info = env.step(action)
 

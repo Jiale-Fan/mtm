@@ -24,6 +24,7 @@ class MaskType(Enum):
     RCBC = enum.auto()
     BC_RANDOM = enum.auto()
     AUTO_MASK = enum.auto()
+    REWARD_PREDICTION = enum.auto()
 
 
 def create_random_mask(
@@ -220,6 +221,34 @@ def create_full_random_masks(
         masks[k] = random_mask
     return masks
 
+
+def create_reward_prediction_masks(
+    traj_length: int,
+    device: str,
+) -> Dict[str, np.ndarray]:
+    state_mask = np.ones(traj_length)
+    action_mask = np.ones(traj_length)
+    reward_mask = np.zeros(traj_length)
+    return {
+        "states": torch.from_numpy(state_mask).to(device),
+        "actions": torch.from_numpy(action_mask).to(device),
+        "rewards": torch.from_numpy(reward_mask).to(device),
+    }
+
+def softgym_add_rew_to_mask(traj_length, device, mask_fn, add_rew, add_img, add_ret):
+    masks = mask_fn(traj_length, device)
+    if add_rew and "rewards" not in masks:
+        masks["rewards"] = torch.zeros_like(masks["actions"])
+
+    # if mask function is BC, should rewards be masked?
+
+    # if add_ret and "returns" not in masks:
+    #     masks["returns"] = masks["actions"].clone()
+    #     if len(masks["returns"].shape) == 2:
+    #         masks["returns"] = masks["returns"][..., 0:1]
+    # if add_img:
+    #     masks["images"] = masks["states"].clone()
+    return masks
 
 def maybe_add_rew_to_mask(traj_length, device, mask_fn, add_rew, add_img, add_ret):
     masks = mask_fn(traj_length, device)

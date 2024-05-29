@@ -14,12 +14,9 @@ tokenizers:
     #   patch_size: 16
     #   normalize: True
     actions:
-      _target_: research.mtm.tokenizers.discrete_action.DiscreteActionsTokenizer.create
-      embedding_dim: 512 # need to be the same as model_config.n_embd
-    # returns:
-    #   _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
-    #   normalize: True
-    rewards:
+      _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
+      normalize: True
+    returns:
       _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
       normalize: True
 
@@ -31,9 +28,8 @@ model_config:
     n_dec_layer: 1
     n_head: 4
     dropout: 0.1
-    loss_keys: [states, actions, rewards]
-    # loss_keys: [actions]
-    # loss_keys: null
+    # loss_keys: [states]
+    loss_keys: null
     latent_dim: null
 
 state_only_dataset: null
@@ -58,10 +54,9 @@ args:
 
     device: cuda
     mask_ratios: [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0] 
-    mask_patterns: ["BC", "FD", "REWARD_PREDICTION"] # every step mask pattern is uniformly sampled from this list
-    # mask_patterns: ["BC"] # every step mask pattern is uniformly sampled from this list
-    warmup_steps: 3000 # !!!!! 
-    num_train_steps: 35000 # !!!!!
+    mask_patterns: ["RCBC"] # every step mask pattern is uniformly sampled from this list
+    warmup_steps: 1000 # !!!!! 
+    num_train_steps: 10000 # !!!!!
     learning_rate: 1e-4
     weight_decay:  0.005
     mode_weights: [0.2, 0.1, 0.7] 

@@ -60,13 +60,17 @@ class SoftgymDataset(Dataset, DatasetProtocol):
         dataset_path: str,
         traj_length: int = 4,
         discount: float = 0.99,
-        states_type: str = "keypoints",
+        states_type: Union["keypoints", "rgb", "depth"]= "keypoints",
+        actions_type: Union["continuous", "discrete"] = "continuous",
+        n_clusters: int = 32,
     ):
 
         assert states_type in ["keypoints", "rgb", "depth"], "states_type should be one of keypoints, rgb, depth"
         self.states_type = states_type
+        self.actions_type = actions_type
 
         self._traj_length = traj_length
+        self.n_clusters = n_clusters
 
         data_objs = glob.glob(str(dataset_path) + '/*.pkl')
         merged_data_obj = {}
@@ -88,7 +92,7 @@ class SoftgymDataset(Dataset, DatasetProtocol):
 
         # data buffer structures:
         # prepare actions, states, rewards, returns
-        self.actions = np.array(merged_data_obj['actions']) # [n_paths x n_timesteps x action_dim]
+        self.raw_actions = np.array(merged_data_obj['actions']) # [n_paths x n_timesteps x action_dim]
         self.rgb = np.array(merged_data_obj['states'])
         self.rewards = np.array(merged_data_obj['rewards'])
         self.keypoints = np.array(merged_data_obj['keypoints'])
@@ -96,10 +100,10 @@ class SoftgymDataset(Dataset, DatasetProtocol):
         # TODO: more modality? such as depth?
 
         # process the grasp flag of the actions
-        self.grasp_flags = self.actions[..., -1]
+        self.grasp_flags = self.raw_actions[..., -1]
         new_flags = np.ones(self.grasp_flags.shape)
         new_flags[self.grasp_flags < 0] = -1
-        self.actions[..., -1] = new_flags
+        self.raw_actions[..., -1] = new_flags
 
         self.returns = np.zeros(self.rewards.shape)
 
@@ -139,6 +143,9 @@ class SoftgymDataset(Dataset, DatasetProtocol):
         self.returns = self.returns[..., None]
         self.rewards = self.rewards[..., None]
 
+        # for discretization of actions, use kmeans to cluster the actions
+        self.cluster_actions()
+
     def filter_trajectories(self) -> None:
         "We can filter the trajectories, probably based on stationarity, or low returns, etc."
         pass
@@ -148,12 +155,13 @@ class SoftgymDataset(Dataset, DatasetProtocol):
     #     return None
     #     # to be compatible wit
 
-    def cluster_actions(self, n_clusters: int = 4) -> None:
+    def cluster_actions(self, n_clusters: int = 32) -> None:
         """
         Cluster the actions into n_clusters clusters using KMeans.
         """
-        self.kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(self.actions.reshape(-1, self.actions.shape[-1]))
+        self.kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(self.raw_actions.reshape(-1, self.raw_actions.shape[-1]))
         self.actions_centers = self.kmeans.cluster_centers_
+        self.actions_labels = self.kmeans.labels_.reshape(self.raw_actions.shape[:-1])
         return self.kmeans
 
 
@@ -161,10 +169,10 @@ class SoftgymDataset(Dataset, DatasetProtocol):
 
         ret = {
             "actions": DataStatistics(
-                mean=self.actions.mean(axis=None, keepdims=True),
-                std=self.actions.std(axis=None, keepdims=True),
-                min=self.actions.min(axis=None, keepdims=True),
-                max=self.actions.max(axis=None, keepdims=True),
+                mean=self.raw_actions.mean(axis=None, keepdims=True),
+                std=self.raw_actions.std(axis=None, keepdims=True),
+                min=self.raw_actions.min(axis=None, keepdims=True),
+                max=self.raw_actions.max(axis=None, keepdims=True),
             ),
             "rewards": DataStatistics(
                 mean=self.rewards.mean(axis=(0, 1), keepdims=True),
@@ -204,6 +212,15 @@ class SoftgymDataset(Dataset, DatasetProtocol):
             return self.depths
         else:
             raise ValueError("states_type should be one of keypoints, rgb, depth")
+        
+    @property
+    def actions(self) -> np.ndarray:
+        if self.actions_type == "continuous":
+            return self.raw_actions
+        else:
+            raise ValueError("actions_type should be continuous")
+        # elif self.actions_type == "discrete":
+        #     return self.actions_labels
 
     def get_trajectory(self, traj_index: int) -> Dict[str, np.ndarray]:
         return {

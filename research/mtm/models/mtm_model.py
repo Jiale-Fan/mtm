@@ -306,9 +306,10 @@ class MTM(nn.Module):
 
             batch_size, T, P, _ = target.size()
             if discrete_map[key]:
-                raw_loss = nn.CrossEntropyLoss(reduction="none")(
-                    pred.permute(0, 3, 1, 2), target.permute(0, 3, 1, 2)
-                ).unsqueeze(3)
+                # raw_loss = nn.CrossEntropyLoss(reduction="none")(
+                #     pred.permute(0, 3, 1, 2), target.permute(0, 3, 1, 2)
+                # ).unsqueeze(3)
+                continue
             else:
                 # apply normalization
                 if norm == "l2":
