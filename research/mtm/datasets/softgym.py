@@ -28,6 +28,7 @@ def get_datasets(
     dataset_path: Union[str, Path],
     seq_steps: int = 4,
     discount: float = 0.99,
+    filter_trajectories: bool = False,
 ):
     """
     Get the training and validation datasets for softgym environment.
@@ -41,11 +42,13 @@ def get_datasets(
         dataset_path=Path.joinpath(dataset_path, 'train_dataset'),
         traj_length=seq_steps,
         discount=discount,
+        filter_trajectories=filter_trajectories,
     )
     val_dataset = SoftgymDataset(
         dataset_path=Path.joinpath(dataset_path, 'val_dataset'),
         traj_length=seq_steps,
         discount=discount,
+        filter_trajectories=filter_trajectories,    
     )
     return train_dataset, val_dataset
 
@@ -63,6 +66,7 @@ class SoftgymDataset(Dataset, DatasetProtocol):
         states_type: Union["keypoints", "rgb", "depth"]= "keypoints",
         actions_type: Union["continuous", "discrete"] = "continuous",
         n_clusters: int = 32,
+        filter_trajectories: bool = True, # whether filter out the segments with no rewards
     ):
 
         assert states_type in ["keypoints", "rgb", "depth"], "states_type should be one of keypoints, rgb, depth"
@@ -131,12 +135,13 @@ class SoftgymDataset(Dataset, DatasetProtocol):
         # create index map; map from an integer sample index to a tuple of (traj_index, start_timestep_index)
         index_map = {}
         count = 0
-        traj_count = 0
+
         for idx, pl in enumerate(self._path_lengths):
             for i in range(pl - self._traj_length + 1):
-                index_map[count] = (traj_count, i)
+                if filter_trajectories and self.rewards[idx, i : i + self._traj_length].sum() == 0:
+                    continue
+                index_map[count] = (idx, i)
                 count += 1
-            traj_count += 1
         self.index_map = index_map
 
         self.num_trajectories = self.returns.shape[0]

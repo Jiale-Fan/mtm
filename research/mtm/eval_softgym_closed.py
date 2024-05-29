@@ -414,10 +414,10 @@ def _main(hydra_cfg):
     env = create_env(hydra_cfg.env_args)
     
     # img_size = 720
-    # all_frames, all_rewards, all_actions, all_keypoints = [], [], [], []
+    all_frames, all_rewards, all_actions, all_keypoints = [], [], [], []
     # sample_stochastically = False
 
-    num_episodes = 8
+    num_episodes = 100
 
     for i in range(num_episodes):
         obs = env.reset()
@@ -439,7 +439,11 @@ def _main(hydra_cfg):
 
             actions.append(action)
             rewards.append(reward)
-            
+
+        print(f"Episode {i} rewards: {np.array(rewards).sum()}")
+        all_rewards.append(rewards)
+        
+    print(f"Average reward: {np.array(all_rewards).sum()/num_episodes}")    
         
         # all_frames.append(frames)
         # all_rewards.append(rewards)

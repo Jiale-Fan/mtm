@@ -51,7 +51,7 @@ model_config:
     latent_dim: null
 
 state_only_dataset: null
-ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/v0.7/saved_models/2024-05-29-18-40-38/model_35000.pt
+ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/2024-05-29_21-26-50/model_12000.pt
 image_encoder: MLP
 shapes:
   MLP:
@@ -101,7 +101,7 @@ env_args:
     action_mode: picker
     num_picker: 1
     render: True
-    headless: False
+    headless: True
     horizon: 75
     action_repeat: 8
     render_mode: cloth
