@@ -5,14 +5,14 @@ defaults:
     - _self_
 
 tokenizers:
-    states:
-      _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
-      normalize: True
-    # if states are rgb images 
     # states:
-    #   _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
-    #   patch_size: 16
+    #   _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
     #   normalize: True
+    # if states are rgb images 
+    states:
+      _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
+      patch_size: 16
+      normalize: True
     actions:
       _target_: research.mtm.tokenizers.discrete_action.DiscreteActionsTokenizer.create
       embedding_dim: 512 # need to be the same as model_config.n_embd
@@ -41,7 +41,7 @@ state_only_dataset: null
 args:
     _target_: research.mtm.train.RunConfig
     seed: 0
-    batch_size: 128
+    batch_size: 64
     n_workers: 10
     traj_length: 4
 

@@ -63,7 +63,7 @@ class SoftgymDataset(Dataset, DatasetProtocol):
         dataset_path: str,
         traj_length: int = 4,
         discount: float = 0.99,
-        states_type: Union["keypoints", "rgb", "depth"]= "keypoints",
+        states_type: Union["keypoints", "rgb", "depth"]= "rgb",
         actions_type: Union["continuous", "discrete"] = "continuous",
         n_clusters: int = 32,
         filter_trajectories: bool = True, # whether filter out the segments with no rewards

@@ -21,14 +21,14 @@ defaults:
 #       normalize: True
 
 tokenizers:
-    states:
-      _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
-      normalize: True
-    # if states are rgb images 
     # states:
-    #   _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
-    #   patch_size: 16
+    #   _target_: research.mtm.tokenizers.continuous.ContinuousTokenizer.create
     #   normalize: True
+    # if states are rgb images 
+    states:
+      _target_: research.mtm.tokenizers.patchify.PatchifyTokenizer.create
+      patch_size: 16
+      normalize: False
     actions:
       _target_: research.mtm.tokenizers.discrete_action.DiscreteActionsTokenizer.create
       embedding_dim: 512 # need to be the same as model_config.n_embd
@@ -51,12 +51,12 @@ model_config:
     latent_dim: null
 
 state_only_dataset: null
-ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/2024-05-29_21-26-50/model_12000.pt
+ckpt_path: /home/jiale/mtm/outputs/mtm_softgym_debug/2024-05-30_00-34-45/model_24000.pt
 image_encoder: MLP
 shapes:
   MLP:
-    # states: [64, 768]
-    states: [1, 33]
+    states: [64, 768]
+    # states: [1, 33]
     actions: [1, 512]
     rewards: [1, 1]
     # returns: [1, 4, 1]
@@ -89,15 +89,15 @@ args:
 
 env_args:
   env: RopeFlatten
-  symbolic: True #### = if observation_mode is not cam_rgb
+  symbolic: False #### = if observation_mode is not cam_rgb
   seed: 0
   max_episode_length: 200
   action_repeat: 1
   bit_depth: 8
   image_dim: 128
   env_kwargs:
-    # observation_mode: cam_rgb
-    observation_mode: key_point
+    observation_mode: cam_rgb
+    # observation_mode: key_point
     action_mode: picker
     num_picker: 1
     render: True

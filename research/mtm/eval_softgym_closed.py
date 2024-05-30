@@ -57,6 +57,8 @@ from research.mtm.utils import (
 )
 from envs.env import Env
 from collections import deque
+from softgym.utils.visualization import save_numpy_as_gif
+
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -423,25 +425,26 @@ def _main(hydra_cfg):
         obs = env.reset()
         done = False
         episode_reward = 0
-        # short_memory = ShortMemory(seq_len=4, shapes={"states": (128, 128, 3), "actions": (4)})
-        short_memory = ShortMemory(seq_len=4, shapes={"states": (33), "actions": (4)}, obs_type="keypoints")
+        short_memory = ShortMemory(seq_len=4, shapes={"states": (128, 128, 3), "actions": (4)})
+        # short_memory = ShortMemory(seq_len=4, shapes={"states": (33), "actions": (4)}, obs_type="rgb")
         frames, rewards, actions, keypoints = [], [], [], []
+        frames.append(env.get_image(128, 128))
         while not done:
             keypoints.append(obs.to('cpu').numpy())
-            frames.append(env.get_image(128, 128))
             # action = short_memory.get_action(model, obs, tokenizer_manager, ratio=1, no_prev_action=False)
             with torch.no_grad():
                 action = short_memory.get_action_beam_search(model, obs, tokenizer_manager, ratio=1, no_prev_action=False)
             action = action.detach().to('cpu').numpy()
             obs, reward, done, info = env.step(action)
-
+            frames.append(env.get_image(128, 128))
             short_memory.append_reward(reward)
-
             actions.append(action)
             rewards.append(reward)
 
         print(f"Episode {i} rewards: {np.array(rewards).sum()}")
-        all_rewards.append(rewards)
+
+                
+        save_numpy_as_gif(np.array(frames), f"Episode_{i}.gif")
         
     print(f"Average reward: {np.array(all_rewards).sum()/num_episodes}")    
         
