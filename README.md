@@ -19,16 +19,20 @@ Build pyflex using docker environment following the notes https://danieltakeshi.
 
 1. Create random initial configurations:
    At the root of package softgym, run
-   ```python
-  python examples/random_env.py --env_name RopeFlatten
+   
+   ```
+   python examples/random_env.py --env_name RopeFlatten
    ```
 2. Train CURL policy
   At the root of package softagent, run
-   ```python
+
+   ```
       python experiments/run_curl.py
    ```
+   
   Collect the dataset: 
   specify the right path in script `softagent/curl/collect_data.py`, then run the script. 
+  
 3. Train MTM policy:
 Choose either branch image or main (keypoints as observation)
   At the root of this package, mtm, run
